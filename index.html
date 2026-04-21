@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Plane — Project Management</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=GeistMono:wght@400;500&family=Sora:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      fontFamily: { sans: ['Sora', 'sans-serif'], mono: ['GeistMono', 'monospace'] },
+      colors: {
+        bg: { base: '#0a0a0f', surface: '#111118', elevated: '#16161f', border: '#1e1e2e' },
+        accent: { purple: '#7c5af4', blue: '#3b82f6', cyan: '#06b6d4', green: '#10b981', amber: '#f59e0b', red: '#ef4444' },
+        text: { primary: '#e8e8f0', secondary: '#8b8ba8', muted: '#4a4a6a' },
+      },
+      boxShadow: {
+        card: '0 1px 3px 0 rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04)',
+        glow: '0 0 24px rgba(124,90,244,0.15)',
+        'glow-green': '0 0 24px rgba(16,185,129,0.15)',
+      }
+    }
+  }
+}
+</script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; background: #0a0a0f; color: #e8e8f0; font-family: 'Sora', sans-serif; overflow: hidden; }
+
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #2a2a3e; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: #3a3a5e; }
+
+  /* Sidebar */
+  #sidebar { width: 240px; min-width: 240px; transition: width 0.25s cubic-bezier(.4,0,.2,1), min-width 0.25s cubic-bezier(.4,0,.2,1); overflow: hidden; }
+  #sidebar.collapsed { width: 56px; min-width: 56px; }
+  #sidebar .label { transition: opacity 0.15s, width 0.25s; white-space: nowrap; overflow: hidden; }
+  #sidebar.collapsed .label { opacity: 0; width: 0; pointer-events: none; }
+  #sidebar.collapsed .sidebar-logo-text { display: none; }
+
+  /* Kanban drag */
+  .kanban-card { cursor: grab; transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s; }
+  .kanban-card:active { cursor: grabbing; }
+  .kanban-card.dragging { opacity: 0.4; transform: scale(0.97); }
+  .kanban-card.drag-over-hint { transform: translateY(-2px); box-shadow: 0 0 0 2px #7c5af4, 0 8px 32px rgba(124,90,244,0.2); }
+  .drop-zone { transition: background 0.15s, border-color 0.15s; }
+  .drop-zone.drag-active { background: rgba(124,90,244,0.06); border-color: rgba(124,90,244,0.3); }
+
+  /* Animations */
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+  .fade-up { animation: fadeUp 0.4s ease both; }
+  .pulse-dot { animation: pulse-dot 2s ease-in-out infinite; }
+  .delay-1 { animation-delay: 0.07s; }
+  .delay-2 { animation-delay: 0.14s; }
+  .delay-3 { animation-delay: 0.21s; }
+  .delay-4 { animation-delay: 0.28s; }
+  .delay-5 { animation-delay: 0.35s; }
+
+  /* Progress bar */
+  .progress-bar { height: 3px; border-radius: 99px; background: #1e1e2e; overflow: hidden; }
+  .progress-fill { height: 100%; border-radius: 99px; transition: width 0.6s cubic-bezier(.4,0,.2,1); }
+
+  /* Nav item */
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 8px; cursor: pointer; transition: background 0.12s; color: #8b8ba8; font-size: 13.5px; font-weight: 500; user-select: none; }
+  .nav-item:hover { background: rgba(255,255,255,0.05); color: #e8e8f0; }
+  .nav-item.active { background: rgba(124,90,244,0.15); color: #a78bfa; }
+
+  /* Avatar */
+  .avatar { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; flex-shrink: 0; }
+
+  /* Badge */
+  .badge { font-size: 10.5px; font-weight: 600; padding: 1px 7px; border-radius: 99px; font-family: 'GeistMono', monospace; }
+
+  /* Priority dot */
+  .prio { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+  /* Hover card actions */
+  .card-actions { opacity: 0; transition: opacity 0.15s; }
+  .kanban-card:hover .card-actions { opacity: 1; }
+
+  /* Tooltip */
+  [data-tip] { position: relative; }
+  [data-tip]:hover::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); background: #1e1e2e; color: #e8e8f0; font-size: 11px; padding: 4px 8px; border-radius: 6px; white-space: nowrap; border: 1px solid #2a2a3e; z-index: 99; pointer-events: none; }
+
+  /* Mini trend SVG */
+  .trend-svg path { fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* Status badge */
+  .status-todo    { background: rgba(139,139,168,0.12); color: #8b8ba8; }
+  .status-prog    { background: rgba(59,130,246,0.12);  color: #60a5fa; }
+  .status-done    { background: rgba(16,185,129,0.12);  color: #34d399; }
+  .status-blocked { background: rgba(239,68,68,0.12);   color: #f87171; }
+
+  /* Column header accent */
+  .col-accent-todo { border-top: 2px solid #4a4a6a; }
+  .col-accent-prog { border-top: 2px solid #3b82f6; }
+  .col-accent-done { border-top: 2px solid #10b981; }
+
+  /* Scrollable kanban columns */
+  .kanban-col-body { overflow-y: auto; max-height: calc(100vh - 224px); padding-bottom: 16px; }
+
+  /* Input */
+  input[type=text] { background: #16161f; border: 1px solid #1e1e2e; color: #e8e8f0; border-radius: 8px; padding: 6px 12px; font-size: 13px; font-family: 'Sora', sans-serif; outline: none; transition: border-color 0.15s; }
+  input[type=text]:focus { border-color: #7c5af4; }
+
+  /* Divider */
+  .divider { height: 1px; background: #1e1e2e; margin: 8px 0; }
+
+  /* Notification badge */
+  .notif { position: absolute; top: -3px; right: -3px; width: 16px; height: 16px; background: #7c5af4; border-radius: 50%; font-size: 9px; font-weight: 700; display: flex; align-items: center; justify-content: center; border: 2px solid #111118; }
+</style>
+</head>
+<body>
+
+<div class="flex h-screen overflow-hidden">
+
+  <!-- SIDEBAR -->
+  <aside id="sidebar" class="flex flex-col h-full border-r select-none" style="background:#111118; border-color:#1e1e2e;">
+
+    <!-- Logo -->
+    <div class="flex items-center gap-3 px-4 py-4" style="border-bottom:1px solid #1e1e2e; min-height:57px;">
+      <div class="flex items-center justify-center w-7 h-7 rounded-lg flex-shrink-0" style="background:linear-gradient(135deg,#7c5af4,#3b82f6);">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7L5.5 10.5L12 3.5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <span class="label sidebar-logo-text font-bold text-sm tracking-tight" style="color:#e8e8f0; letter-spacing:-0.02em;">Plane<span style="color:#7c5af4;">.</span></span>
+    </div>
+
+    <!-- Workspace selector -->
+    <div class="px-3 py-3">
+      <div class="flex items-center gap-2 px-2 py-2 rounded-lg cursor-pointer hover:bg-white/5 transition-colors" style="border:1px solid #1e1e2e; background:#16161f;">
+        <div class="avatar flex-shrink-0" style="background:linear-gradient(135deg,#7c5af4,#a78bfa); font-size:10px;">AC</div>
+        <div class="label flex flex-col min-w-0">
+          <span class="text-xs font-semibold truncate" style="color:#e8e8f0;">Acme Corp</span>
+          <span class="text-xs" style="color:#4a4a6a;">Free Plan</span>
+        </div>
+        <i data-lucide="chevrons-up-down" class="label ml-auto flex-shrink-0" style="width:12px;height:12px;color:#4a4a6a;"></i>
+      </div>
+    </div>
+
+    <!-- Nav -->
+    <nav class="flex flex-col gap-1 px-3 flex-1 overflow-y-auto py-1">
+      <div class="nav-item active" onclick="setNav(this)">
+        <i data-lucide="layout-dashboard" style="width:15px;height:15px;flex-shrink:0;"></i>
+        <span class="label">Dashboard</span>
+      </div>
+      <div class="nav-item" onclick="setNav(this)">
+        <i data-lucide="git-branch" style="width:15px;height:15px;flex-shrink:0;"></i>
+        <span class="label">Projects</span>
+        <span class="label badge ml-auto" style="background:rgba(124,90,244,0.15);color:#a78bfa;">3</span>
+      </div>
+      <div class="nav-item" onclick="setNav(this)">
+        <i data-lucide="layers" style="width:15px;height:15px;flex-shrink:0;"></i>
+        <span class="label">Issues</span>
+      </div>
+      <div class="nav-item" onclick="setNav(this)">
+        <i data-lucide="zap" style="width:15px;height:15px;flex-shrink:0;"></i>
+        <span class="label">Cycles</span>
+      </div>
+      <div class="nav-item" onclick="setNav(this)">
+        <i data-lucide="map" style="width:15px;height:15px;flex-shrink:0;"></i>
+        <span class="label">Roadmap</span>
+      </div>
+      <div class="nav-item" onclick="setNav(this)">
+        <i data-lucide="bar-chart-2" style="width:15px;height:15px;flex-shrink:0;"></i>
+        <span class="label">Analytics</span>
+      </div>
+
+      <div class="divider"></div>
+
+      <p class="label px-2 text-xs font-semibold uppercase tracking-widest mb-1" style="color:#2a2a4a; font-size:9.5px; letter-spacing:.1em;">Projects</p>
+
+      <div class="nav-item" onclick="setNav(this)">
+        <span class="prio" style="background:#7c5af4;"></span>
+        <span class="label">Design System v2</span>
+      </div>
+      <div class="nav-item" onclick="setNav(this)">
+        <span class="prio" style="background:#3b82f6;"></span>
+        <span class="label">API Redesign</span>
+      </div>
+      <div class="nav-item" onclick="setNav(this)">
+        <span class="prio" style="background:#10b981;"></span>
+        <span class="label">Mobile App</span>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="nav-item" onclick="setNav(this)">
+        <i data-lucide="settings" style="width:15px;height:15px;flex-shrink:0;"></i>
+        <span class="label">Settings</span>
+      </div>
+    </nav>
+
+    <!-- User footer -->
+    <div class="px-3 py-3" style="border-top:1px solid #1e1e2e;">
+      <div class="flex items-center gap-2 px-2 py-2 rounded-lg cursor-pointer hover:bg-white/5 transition-colors">
+        <div class="avatar flex-shrink-0" style="background:linear-gradient(135deg,#06b6d4,#3b82f6);">JD</div>
+        <div class="label flex flex-col min-w-0">
+          <span class="text-xs font-semibold truncate" style="color:#e8e8f0;">Jamie Doe</span>
+          <span class="text-xs truncate" style="color:#4a4a6a;">jamie@acme.io</span>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="flex flex-col flex-1 overflow-hidden">
+
+    <!-- Top bar -->
+    <header class="flex items-center gap-4 px-6 py-3.5 flex-shrink-0" style="background:#111118; border-bottom:1px solid #1e1e2e; min-height:57px;">
+      <button onclick="toggleSidebar()" class="p-1.5 rounded-md hover:bg-white/5 transition-colors" style="color:#4a4a6a;">
+        <i data-lucide="panel-left" style="width:16px;height:16px;"></i>
+      </button>
+
+      <div class="flex items-center gap-2 flex-1" style="max-width:360px;">
+        <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg flex-1" style="background:#16161f; border:1px solid #1e1e2e;">
+          <i data-lucide="search" style="width:13px;height:13px;color:#4a4a6a;flex-shrink:0;"></i>
+          <input type="text" placeholder="Search issues, projects..." class="bg-transparent border-none outline-none text-sm flex-1" style="color:#8b8ba8; font-size:13px;" />
+          <kbd class="text-xs px-1.5 py-0.5 rounded font-mono" style="background:#1e1e2e; color:#4a4a6a; font-size:10px;">⌘K</kbd>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2 ml-auto">
+        <div class="relative" data-tip="Notifications">
+          <button class="p-1.5 rounded-md hover:bg-white/5 transition-colors" style="color:#4a4a6a;">
+            <i data-lucide="bell" style="width:16px;height:16px;"></i>
+          </button>
+          <span class="notif">3</span>
+        </div>
+        <button class="p-1.5 rounded-md hover:bg-white/5 transition-colors" data-tip="Help" style="color:#4a4a6a;">
+          <i data-lucide="help-circle" style="width:16px;height:16px;"></i>
+        </button>
+        <div class="w-px h-5" style="background:#1e1e2e;"></div>
+        <button onclick="openNewIssue()" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all hover:opacity-90 active:scale-95" style="background:linear-gradient(135deg,#7c5af4,#6d4ee0); color:#fff; font-size:12.5px; box-shadow:0 0 20px rgba(124,90,244,0.3);">
+          <i data-lucide="plus" style="width:13px;height:13px;"></i>
+          <span>New Issue</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Content area -->
+    <div class="flex-1 overflow-y-auto px-6 py-5" style="background:#0a0a0f;">
+
+      <!-- Page title -->
+      <div class="flex items-center justify-between mb-6 fade-up">
+        <div>
+          <h1 class="font-bold text-xl tracking-tight" style="color:#e8e8f0; letter-spacing:-0.03em;">Dashboard</h1>
+          <p class="text-xs mt-0.5" style="color:#4a4a6a;">Sprint 12 · Apr 14 – Apr 28, 2026</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-white/5 transition-colors" style="border:1px solid #1e1e2e; color:#8b8ba8;">
+            <i data-lucide="filter" style="width:12px;height:12px;"></i> Filter
+          </button>
+          <button class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-white/5 transition-colors" style="border:1px solid #1e1e2e; color:#8b8ba8;">
+            <i data-lucide="calendar" style="width:12px;height:12px;"></i> Apr 2026
+          </button>
+        </div>
+      </div>
+
+      <!-- KPI CARDS -->
+      <div class="grid grid-cols-3 gap-4 mb-6">
+
+        <!-- KPI 1: Velocity -->
+        <div class="rounded-xl p-5 fade-up delay-1" style="background:#111118; border:1px solid #1e1e2e; box-shadow:0 1px 3px rgba(0,0,0,0.5);">
+          <div class="flex items-start justify-between mb-3">
+            <div>
+              <p class="text-xs font-medium mb-1" style="color:#4a4a6a; letter-spacing:.04em; text-transform:uppercase; font-size:10.5px;">Sprint Velocity</p>
+              <p class="text-3xl font-bold tracking-tight" style="color:#e8e8f0; letter-spacing:-0.04em;">84 <span class="text-base font-normal" style="color:#4a4a6a;">pts</span></p>
+            </div>
+            <div class="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold" style="background:rgba(16,185,129,0.12); color:#34d399; font-size:11px;">
+              <i data-lucide="trending-up" style="width:11px;height:11px;"></i> +12%
+            </div>
+          </div>
+          <svg class="trend-svg w-full" viewBox="0 0 120 36" style="height:36px;">
+            <defs><linearGradient id="g1" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#10b981" stop-opacity=".6"/><stop offset="100%" stop-color="#10b981"/></linearGradient></defs>
+            <path d="M0 30 L20 26 L40 20 L60 22 L80 14 L100 8 L120 4" stroke="url(#g1)" />
+            <path d="M0 30 L20 26 L40 20 L60 22 L80 14 L100 8 L120 4 L120 36 L0 36Z" fill="url(#g1)" fill-opacity="0.06"/>
+          </svg>
+          <p class="text-xs mt-2" style="color:#4a4a6a;">vs 75 pts last sprint</p>
+        </div>
+
+        <!-- KPI 2: Issues Closed -->
+        <div class="rounded-xl p-5 fade-up delay-2" style="background:#111118; border:1px solid #1e1e2e; box-shadow:0 1px 3px rgba(0,0,0,0.5);">
+          <div class="flex items-start justify-between mb-3">
+            <div>
+              <p class="text-xs font-medium mb-1" style="color:#4a4a6a; letter-spacing:.04em; text-transform:uppercase; font-size:10.5px;">Issues Closed</p>
+              <p class="text-3xl font-bold tracking-tight" style="color:#e8e8f0; letter-spacing:-0.04em;" id="kpi-closed">24 <span class="text-base font-normal" style="color:#4a4a6a;">/ 31</span></p>
+            </div>
+            <div class="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold" style="background:rgba(59,130,246,0.12); color:#60a5fa; font-size:11px;">
+              <i data-lucide="trending-up" style="width:11px;height:11px;"></i> +5%
+            </div>
+          </div>
+          <svg class="trend-svg w-full" viewBox="0 0 120 36" style="height:36px;">
+            <defs><linearGradient id="g2" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#3b82f6" stop-opacity=".5"/><stop offset="100%" stop-color="#7c5af4"/></linearGradient></defs>
+            <path d="M0 32 L20 28 L40 30 L60 22 L80 18 L100 12 L120 6" stroke="url(#g2)" />
+            <path d="M0 32 L20 28 L40 30 L60 22 L80 18 L100 12 L120 6 L120 36 L0 36Z" fill="url(#g2)" fill-opacity="0.06"/>
+          </svg>
+          <div class="progress-bar mt-2">
+            <div class="progress-fill" style="width:77%; background:linear-gradient(90deg,#3b82f6,#7c5af4);"></div>
+          </div>
+        </div>
+
+        <!-- KPI 3: Cycle Time -->
+        <div class="rounded-xl p-5 fade-up delay-3" style="background:#111118; border:1px solid #1e1e2e; box-shadow:0 1px 3px rgba(0,0,0,0.5);">
+          <div class="flex items-start justify-between mb-3">
+            <div>
+              <p class="text-xs font-medium mb-1" style="color:#4a4a6a; letter-spacing:.04em; text-transform:uppercase; font-size:10.5px;">Avg Cycle Time</p>
+              <p class="text-3xl font-bold tracking-tight" style="color:#e8e8f0; letter-spacing:-0.04em;">2.4 <span class="text-base font-normal" style="color:#4a4a6a;">days</span></p>
+            </div>
+            <div class="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold" style="background:rgba(245,158,11,0.12); color:#fbbf24; font-size:11px;">
+              <i data-lucide="minus" style="width:11px;height:11px;"></i> 0%
+            </div>
+          </div>
+          <svg class="trend-svg w-full" viewBox="0 0 120 36" style="height:36px;">
+            <defs><linearGradient id="g3" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#f59e0b" stop-opacity=".5"/><stop offset="100%" stop-color="#f59e0b"/></linearGradient></defs>
+            <path d="M0 10 L20 14 L40 8 L60 16 L80 10 L100 12 L120 10" stroke="url(#g3)" />
+            <path d="M0 10 L20 14 L40 8 L60 16 L80 10 L100 12 L120 10 L120 36 L0 36Z" fill="url(#g3)" fill-opacity="0.06"/>
+          </svg>
+          <p class="text-xs mt-2" style="color:#4a4a6a;">Stable — target &lt; 3 days ✓</p>
+        </div>
+      </div>
+
+      <!-- KANBAN BOARD -->
+      <div class="flex items-center justify-between mb-3 fade-up delay-4">
+        <div class="flex items-center gap-2">
+          <i data-lucide="trello" style="width:15px;height:15px;color:#7c5af4;"></i>
+          <h2 class="font-semibold text-sm" style="color:#e8e8f0;">Board View</h2>
+          <span class="badge" style="background:rgba(124,90,244,0.12); color:#a78bfa;" id="total-badge">0</span>
+        </div>
+        <div class="flex items-center gap-2 text-xs" style="color:#4a4a6a;">
+          <span class="flex items-center gap-1"><span class="prio pulse-dot" style="background:#10b981;"></span>Live</span>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-3 gap-4 fade-up delay-5">
+
+        <!-- TODO COLUMN -->
+        <div id="col-todo" class="rounded-xl drop-zone col-accent-todo" style="background:#111118; border:1px solid #1e1e2e; min-height:240px;">
+          <div class="flex items-center justify-between px-4 py-3" style="border-bottom:1px solid #1e1e2e;">
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-semibold uppercase tracking-widest" style="color:#8b8ba8; letter-spacing:.08em; font-size:10px;">To Do</span>
+              <span class="badge status-todo" id="badge-todo">0</span>
+            </div>
+            <button onclick="addCard('todo')" class="p-1 rounded-md hover:bg-white/5 transition-colors" style="color:#4a4a6a;" data-tip="Add issue">
+              <i data-lucide="plus" style="width:13px;height:13px;"></i>
+            </button>
+          </div>
+          <div id="cards-todo" class="kanban-col-body px-3 pt-3 space-y-2.5"></div>
+        </div>
+
+        <!-- IN PROGRESS COLUMN -->
+        <div id="col-inprogress" class="rounded-xl drop-zone col-accent-prog" style="background:#111118; border:1px solid #1e1e2e; min-height:240px;">
+          <div class="flex items-center justify-between px-4 py-3" style="border-bottom:1px solid #1e1e2e;">
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-semibold uppercase tracking-widest" style="color:#60a5fa; letter-spacing:.08em; font-size:10px;">In Progress</span>
+              <span class="badge status-prog" id="badge-inprogress">0</span>
+            </div>
+            <button onclick="addCard('inprogress')" class="p-1 rounded-md hover:bg-white/5 transition-colors" style="color:#4a4a6a;" data-tip="Add issue">
+              <i data-lucide="plus" style="width:13px;height:13px;"></i>
+            </button>
+          </div>
+          <div id="cards-inprogress" class="kanban-col-body px-3 pt-3 space-y-2.5"></div>
+        </div>
+
+        <!-- DONE COLUMN -->
+        <div id="col-done" class="rounded-xl drop-zone col-accent-done" style="background:#111118; border:1px solid #1e1e2e; min-height:240px;">
+          <div class="flex items-center justify-between px-4 py-3" style="border-bottom:1px solid #1e1e2e;">
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-semibold uppercase tracking-widest" style="color:#34d399; letter-spacing:.08em; font-size:10px;">Done</span>
+              <span class="badge status-done" id="badge-done">0</span>
+            </div>
+            <button onclick="addCard('done')" class="p-1 rounded-md hover:bg-white/5 transition-colors" style="color:#4a4a6a;" data-tip="Add issue">
+              <i data-lucide="plus" style="width:13px;height:13px;"></i>
+            </button>
+          </div>
+          <div id="cards-done" class="kanban-col-body px-3 pt-3 space-y-2.5"></div>
+        </div>
+
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<!-- NEW ISSUE MODAL -->
+<div id="modal" class="fixed inset-0 z-50 flex items-center justify-center" style="background:rgba(0,0,0,0.7); backdrop-filter:blur(4px); display:none!important;">
+  <div class="rounded-2xl p-6 w-full max-w-md shadow-2xl fade-up" style="background:#16161f; border:1px solid #2a2a3e;">
+    <div class="flex items-center justify-between mb-5">
+      <h3 class="font-semibold text-sm" style="color:#e8e8f0;">Create New Issue</h3>
+      <button onclick="closeModal()" class="p-1.5 rounded-md hover:bg-white/5 transition-colors" style="color:#4a4a6a;"><i data-lucide="x" style="width:15px;height:15px;"></i></button>
+    </div>
+    <div class="space-y-3">
+      <div>
+        <label class="block text-xs mb-1.5" style="color:#4a4a6a;">Title</label>
+        <input id="modal-title" type="text" placeholder="Issue title..." class="w-full" />
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs mb-1.5" style="color:#4a4a6a;">Status</label>
+          <select id="modal-status" class="w-full text-sm rounded-lg px-3 py-1.5" style="background:#1e1e2e;border:1px solid #2a2a3e;color:#e8e8f0;font-family:'Sora',sans-serif;outline:none;">
+            <option value="todo">To Do</option>
+            <option value="inprogress">In Progress</option>
+            <option value="done">Done</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs mb-1.5" style="color:#4a4a6a;">Priority</label>
+          <select id="modal-priority" class="w-full text-sm rounded-lg px-3 py-1.5" style="background:#1e1e2e;border:1px solid #2a2a3e;color:#e8e8f0;font-family:'Sora',sans-serif;outline:none;">
+            <option value="urgent">🔴 Urgent</option>
+            <option value="high">🟠 High</option>
+            <option value="medium" selected>🟡 Medium</option>
+            <option value="low">🔵 Low</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs mb-1.5" style="color:#4a4a6a;">Assignee</label>
+        <select id="modal-assignee" class="w-full text-sm rounded-lg px-3 py-1.5" style="background:#1e1e2e;border:1px solid #2a2a3e;color:#e8e8f0;font-family:'Sora',sans-serif;outline:none;">
+          <option value="JD">Jamie Doe</option>
+          <option value="AL">Alex Liu</option>
+          <option value="MK">Mia Kim</option>
+          <option value="RS">Raj Singh</option>
+        </select>
+      </div>
+    </div>
+    <div class="flex gap-2 mt-5">
+      <button onclick="closeModal()" class="flex-1 py-2 rounded-lg text-sm font-medium transition-colors hover:bg-white/5" style="border:1px solid #1e1e2e; color:#8b8ba8;">Cancel</button>
+      <button onclick="submitModal()" class="flex-1 py-2 rounded-lg text-sm font-semibold transition-all hover:opacity-90" style="background:linear-gradient(135deg,#7c5af4,#6d4ee0); color:#fff;">Create Issue</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── DATA ────────────────────────────────────────────────────────────────────
+let issueCounter = 100;
+const avatarColors = {
+  JD: 'linear-gradient(135deg,#06b6d4,#3b82f6)',
+  AL: 'linear-gradient(135deg,#7c5af4,#a78bfa)',
+  MK: 'linear-gradient(135deg,#f59e0b,#ef4444)',
+  RS: 'linear-gradient(135deg,#10b981,#06b6d4)',
+};
+const prioMeta = {
+  urgent: { color: '#ef4444', label: 'Urgent' },
+  high:   { color: '#f59e0b', label: 'High' },
+  medium: { color: '#3b82f6', label: 'Medium' },
+  low:    { color: '#4a4a6a', label: 'Low' },
+};
+const tagColors = ['#7c5af4','#3b82f6','#10b981','#f59e0b','#ef4444','#06b6d4'];
+const tags = [['Design','#7c5af4'],['Frontend','#3b82f6'],['API','#10b981'],['Bug','#ef4444'],['Docs','#06b6d4'],['Perf','#f59e0b']];
+
+const seed = [
+  { id:'PLN-089', title:'Redesign onboarding flow with new brand guidelines', col:'todo',      prio:'urgent', assignee:'JD', tag:tags[0], points:8 },
+  { id:'PLN-090', title:'Implement dark mode toggle in settings panel',         col:'todo',      prio:'high',   assignee:'AL', tag:tags[1], points:5 },
+  { id:'PLN-091', title:'Fix race condition in real-time sync engine',           col:'todo',      prio:'medium', assignee:'RS', tag:tags[2], points:3 },
+  { id:'PLN-092', title:'Build GraphQL schema for notifications API',            col:'inprogress',prio:'high',   assignee:'MK', tag:tags[2], points:8 },
+  { id:'PLN-093', title:'Migrate legacy REST endpoints to v2 contracts',         col:'inprogress',prio:'urgent', assignee:'RS', tag:tags[2], points:13 },
+  { id:'PLN-094', title:'Add Storybook stories for Button component system',     col:'inprogress',prio:'medium', assignee:'AL', tag:tags[0], points:3 },
+  { id:'PLN-095', title:'Optimize Lighthouse score from 72 to 90+',              col:'done',      prio:'high',   assignee:'JD', tag:tags[5], points:5 },
+  { id:'PLN-096', title:'Write integration tests for auth middleware layer',     col:'done',      prio:'medium', assignee:'MK', tag:tags[4], points:3 },
+  { id:'PLN-097', title:'Deploy preview environments on Vercel per branch',      col:'done',      prio:'low',    assignee:'RS', tag:tags[1], points:2 },
+];
+
+// ─── CARD RENDERING ──────────────────────────────────────────────────────────
+function makeCard(data) {
+  const card = document.createElement('div');
+  card.className = 'kanban-card rounded-xl p-3.5';
+  card.style.cssText = 'background:#16161f; border:1px solid #1e1e2e; box-shadow:0 1px 3px rgba(0,0,0,0.4);';
+  card.draggable = true;
+  card.dataset.id = data.id;
+  card.dataset.col = data.col;
+
+  const prio = prioMeta[data.prio];
+  const av = avatarColors[data.assignee] || 'linear-gradient(135deg,#7c5af4,#a78bfa)';
+  const doneStyle = data.col === 'done' ? 'text-decoration:line-through; color:#4a4a6a;' : '';
+
+  card.innerHTML = `
+    <div class="flex items-start justify-between gap-2 mb-2.5">
+      <div class="flex items-center gap-1.5">
+        <span class="prio" style="background:${prio.color}; opacity:${data.col==='done'?.4:1};"></span>
+        <span class="font-mono text-xs" style="color:#4a4a6a; font-size:10.5px;">${data.id}</span>
+      </div>
+      <div class="card-actions flex items-center gap-1">
+        <button onclick="cycleStatus(event,'${data.id}')" class="p-1 rounded hover:bg-white/5 transition-colors" style="color:#4a4a6a;" title="Move to next status">
+          <i data-lucide="arrow-right-circle" style="width:12px;height:12px;"></i>
+        </button>
+        <button onclick="deleteCard(event,'${data.id}')" class="p-1 rounded hover:bg-white/5 transition-colors" style="color:#4a4a6a;" title="Delete">
+          <i data-lucide="trash-2" style="width:12px;height:12px;"></i>
+        </button>
+      </div>
+    </div>
+    <p class="text-sm leading-snug mb-3 font-medium" style="color:#e8e8f0; font-size:12.5px; ${doneStyle}">${data.title}</p>
+    <div class="flex items-center justify-between gap-2">
+      <div class="flex items-center gap-1.5">
+        <span class="badge" style="background:rgba(${hexToRgb(data.tag[1])},0.12); color:${data.tag[1]}; font-size:9.5px;">${data.tag[0]}</span>
+        <span class="badge" style="background:rgba(255,255,255,0.05); color:#4a4a6a; font-size:9.5px;">${data.points}p</span>
+      </div>
+      <div class="avatar" style="background:${av}; width:22px;height:22px;font-size:9px;">${data.assignee}</div>
+    </div>
+  `;
+
+  // Drag events
+  card.addEventListener('dragstart', onDragStart);
+  card.addEventListener('dragend', onDragEnd);
+
+  return card;
+}
+
+function hexToRgb(hex) {
+  const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+  return `${r},${g},${b}`;
+}
+
+// ─── STORE ───────────────────────────────────────────────────────────────────
+let store = {};
+function storeCard(data) { store[data.id] = data; }
+function getCard(id) { return store[id]; }
+function removeFromStore(id) { delete store[id]; }
+
+function renderAll() {
+  ['todo','inprogress','done'].forEach(col => {
+    document.getElementById('cards-' + col).innerHTML = '';
+  });
+  seed.forEach(d => { storeCard(d); addToColumn(d); });
+  updateBadges();
+}
+
+function addToColumn(data) {
+  const container = document.getElementById('cards-' + data.col);
+  const card = makeCard(data);
+  container.appendChild(card);
+  lucide.createIcons({ elements: [card] });
+}
+
+function updateBadges() {
+  const cols = ['todo','inprogress','done'];
+  let total = 0;
+  cols.forEach(col => {
+    const n = document.getElementById('cards-' + col).children.length;
+    document.getElementById('badge-' + col).textContent = n;
+    total += n;
+  });
+  document.getElementById('total-badge').textContent = total;
+}
+
+// ─── DRAG & DROP ─────────────────────────────────────────────────────────────
+let draggingId = null;
+
+function onDragStart(e) {
+  draggingId = e.currentTarget.dataset.id;
+  e.currentTarget.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+}
+
+function onDragEnd(e) {
+  e.currentTarget.classList.remove('dragging');
+  document.querySelectorAll('.drop-zone').forEach(z => z.classList.remove('drag-active'));
+  draggingId = null;
+}
+
+document.querySelectorAll('.drop-zone').forEach(zone => {
+  zone.addEventListener('dragover', e => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    zone.classList.add('drag-active');
+  });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-active'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('drag-active');
+    if (!draggingId) return;
+    const newCol = zone.id.replace('col-','');
+    const data = getCard(draggingId);
+    if (!data || data.col === newCol) return;
+
+    // Remove from old column
+    const oldCard = document.querySelector(`.kanban-card[data-id="${draggingId}"]`);
+    if (oldCard) oldCard.remove();
+
+    // Update store
+    data.col = newCol;
+    store[draggingId] = data;
+
+    // Add to new column
+    addToColumn(data);
+    updateBadges();
+  });
+});
+
+// ─── CYCLE STATUS ────────────────────────────────────────────────────────────
+const cycleOrder = ['todo','inprogress','done'];
+function cycleStatus(e, id) {
+  e.stopPropagation();
+  const data = getCard(id);
+  if (!data) return;
+  const idx = cycleOrder.indexOf(data.col);
+  const next = cycleOrder[(idx + 1) % cycleOrder.length];
+
+  const oldCard = document.querySelector(`.kanban-card[data-id="${id}"]`);
+  if (oldCard) oldCard.remove();
+
+  data.col = next;
+  store[id] = data;
+  addToColumn(data);
+  updateBadges();
+}
+
+// ─── DELETE ──────────────────────────────────────────────────────────────────
+function deleteCard(e, id) {
+  e.stopPropagation();
+  const card = document.querySelector(`.kanban-card[data-id="${id}"]`);
+  if (card) { card.style.opacity = '0'; card.style.transform = 'scale(0.95)'; setTimeout(() => { card.remove(); updateBadges(); }, 150); }
+  removeFromStore(id);
+}
+
+// ─── ADD CARD (via column + button) ──────────────────────────────────────────
+function addCard(col) {
+  openNewIssue(col);
+}
+
+// ─── MODAL ───────────────────────────────────────────────────────────────────
+let modalTargetCol = 'todo';
+function openNewIssue(col) {
+  modalTargetCol = col || 'todo';
+  document.getElementById('modal-status').value = modalTargetCol;
+  document.getElementById('modal').style.display = 'flex';
+}
+function closeModal() { document.getElementById('modal').style.display = 'none'; }
+
+function submitModal() {
+  const title = document.getElementById('modal-title').value.trim();
+  if (!title) { document.getElementById('modal-title').focus(); return; }
+  const col = document.getElementById('modal-status').value;
+  const prio = document.getElementById('modal-priority').value;
+  const assignee = document.getElementById('modal-assignee').value;
+  const tag = tags[Math.floor(Math.random() * tags.length)];
+  const points = [1,2,3,5,8][Math.floor(Math.random()*5)];
+  const id = 'PLN-' + (++issueCounter);
+
+  const data = { id, title, col, prio, assignee, tag, points };
+  storeCard(data);
+  addToColumn(data);
+  updateBadges();
+
+  document.getElementById('modal-title').value = '';
+  closeModal();
+}
+
+document.getElementById('modal').addEventListener('click', function(e) {
+  if (e.target === this) closeModal();
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); if ((e.metaKey||e.ctrlKey) && e.key === 'k') openNewIssue(); });
+
+// ─── SIDEBAR TOGGLE ──────────────────────────────────────────────────────────
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('collapsed');
+}
+
+function setNav(el) {
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  el.classList.add('active');
+}
+
+// ─── INIT ────────────────────────────────────────────────────────────────────
+renderAll();
+lucide.createIcons();
+</script>
+</body>
+</html>
