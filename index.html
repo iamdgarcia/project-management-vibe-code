@@ -664,10 +664,62 @@ function setNav(el) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   el.classList.add('active');
 }
+  // FILTER BUTTON (simple toggle example)
+document.querySelectorAll('[data-lucide="filter"]').forEach(btn => {
+  btn.parentElement.addEventListener('click', () => {
+    alert('Filter functionality coming soon');
+  });
+});
+
+// CALENDAR BUTTON
+document.querySelectorAll('[data-lucide="calendar"]').forEach(btn => {
+  btn.parentElement.addEventListener('click', () => {
+    alert('Calendar picker not implemented yet');
+  });
+});
+
+// SEARCH INPUT FUNCTIONALITY
+const searchInput = document.querySelector('input[placeholder="Search issues, projects..."]');
+searchInput.addEventListener('input', () => {
+  const value = searchInput.value.toLowerCase();
+  document.querySelectorAll('.kanban-card').forEach(card => {
+    const text = card.innerText.toLowerCase();
+    card.style.display = text.includes(value) ? 'block' : 'none';
+  });
+});
+
+// NOTIFICATIONS BUTTON
+const notifBtn = document.querySelector('[data-lucide="bell"]').parentElement;
+notifBtn.addEventListener('click', () => {
+  alert('You have 3 new notifications');
+});
+
+// HELP BUTTON
+const helpBtn = document.querySelector('[data-lucide="help-circle"]').parentElement;
+helpBtn.addEventListener('click', () => {
+  alert('Help center coming soon');
+});
+
+// SIDEBAR PROJECT CLICK
+function setNav(el) {
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  el.classList.add('active');
+  alert('Navigated to: ' + el.innerText.trim());
+}
+
+// KEYBOARD SHORTCUT (Cmd/Ctrl + N for new issue)
+document.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
+    e.preventDefault();
+    openNewIssue();
+  }
+});
 
 // ─── INIT ────────────────────────────────────────────────────────────────────
 renderAll();
 lucide.createIcons();
+  
 </script>
+  
 </body>
 </html>
